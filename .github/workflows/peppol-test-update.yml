@@ -1,0 +1,48 @@
+name: Peppol Directory Daily Update (Neon DB)
+
+on:
+  schedule:
+    - cron: '0 0,6,12,18 * * *'
+  workflow_dispatch:
+
+jobs:
+  run_business_card_update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install requests urllib3 psycopg[binary] tqdm
+
+    - name: Verify file exists (Debug)
+      run: |
+        echo "=== Repo Structure ==="
+        ls -la .github/workflows/
+        ls -la scripts/ || echo "❌ scripts/ NOT FOUND!"
+        find . -name "business_cards_update.py" -type f || echo "❌ Python file NOT FOUND!"
+        echo "=== End Debug ==="
+
+    - name: Run Business Cards Update Script
+      run: python scripts/business_cards_update.py
+      env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    - name: Success Log
+      if: success()
+      run: echo "✅ Update completed successfully!"
+
+    - name: Failure Log
+      if: failure()
+      run: echo "❌ Update failed. Check logs."

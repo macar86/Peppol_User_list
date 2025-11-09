@@ -1,0 +1,59 @@
+name: Peppol Directory Production Update (Mustafa Acar Edition)
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+jobs:
+  run_prod_update:
+    runs-on: ubuntu-22.04 # Stabil CPU
+    timeout-minutes: 20  # 3 saat – download/parse/indexes için güvenli
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install requests urllib3 psycopg[binary] tqdm lxml # lxml for fast parse
+    - name: Verify file (Debug)
+      run: |
+        echo "=== Structure ==="
+        ls -la scripts/ | grep prod
+        find . -name "business_cards_update_prod.py" -type f || echo "❌ File NOT FOUND!"
+        echo "=== End ==="
+    - name: Run Prod Script
+      id: run-script
+      run: |
+        echo "🚀 Script başlıyor: $(date)"
+        python scripts/business_cards_update_prod.py
+        echo "✅ Script bitti: $(date)"
+      env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    - name: Success
+      if: success()
+      run: |
+        echo "🎉 Production update TAMAM! Veri yüklendi."
+        echo "DB'yi kontrol et: SELECT COUNT(*) FROM participants_prod;"
+    - name: Failure
+      if: failure()
+      run: |
+        echo "⚠️ Script kısmen başarısız (ama veri yüklendi?)."
+        echo "=== Manuel Adımlar ==="
+        echo "1. DB Console'a gir (pgAdmin/psql)"
+        echo "2. Veri var mı? SELECT COUNT(*) FROM participants_final_prod;"
+        echo "3. Varsa swap: DROP TABLE IF EXISTS participants_prod; ALTER TABLE participants_final_prod RENAME TO participants_prod;"
+        echo "4. Indexes: CREATE INDEX CONCURRENTLY ... (log'lardan bak)"
+        echo "=== Log'lar ==="
+        cat /tmp/peppol.log || echo "Log yok"
+    - name: Upload Logs (Her Zaman)
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: peppol-logs
+        path: |
+          /tmp/peppol.log
+          scripts/business_cards_update_prod.py
+        retention-days: 7
